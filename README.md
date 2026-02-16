@@ -1,6 +1,6 @@
 # external-auth-template
 
-Template / demo implementations of the [EdgeQuota](https://buf.build/edgequota/edgequota) external authentication protocol.
+Template / demo implementations of the [EdgeQuota](https://github.com/edgequota/edgequota) external authentication protocol.
 
 EdgeQuota calls an external auth service for every incoming request when authentication is enabled. This repository provides two ready-to-use implementations — one using **gRPC** and one using plain **HTTP** — that demonstrate how to:
 
