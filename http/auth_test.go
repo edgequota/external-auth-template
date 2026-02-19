@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	authv1http "github.com/edgequota/edgequota-go/gen/http/auth/v1"
 	"github.com/golang-jwt/jwt/v5"
 )
 
@@ -28,7 +29,7 @@ func signToken(t *testing.T, secret string, claims jwt.MapClaims) string {
 	return s
 }
 
-func checkRequest(t *testing.T, svc *AuthService, req CheckRequest) *httptest.ResponseRecorder {
+func checkRequest(t *testing.T, svc *AuthService, req authv1http.CheckRequest) *httptest.ResponseRecorder {
 	t.Helper()
 	body, _ := json.Marshal(req)
 	httpReq := httptest.NewRequest("POST", "/check", bytes.NewReader(body))
@@ -38,25 +39,22 @@ func checkRequest(t *testing.T, svc *AuthService, req CheckRequest) *httptest.Re
 	return w
 }
 
-func decodeCheckResponse(t *testing.T, w *httptest.ResponseRecorder) CheckResponse {
+func decodeCheckResponse(t *testing.T, w *httptest.ResponseRecorder) authv1http.CheckResponse {
 	t.Helper()
-	var resp CheckResponse
+	var resp authv1http.CheckResponse
 	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
 		t.Fatal(err)
 	}
 	return resp
 }
 
-// --------------------------------------------------------------------------
-// POST /check tests
-// --------------------------------------------------------------------------
-
 func TestCheck_MissingAuthHeader(t *testing.T) {
 	svc := testService()
-	w := checkRequest(t, svc, CheckRequest{
-		Method:  "GET",
-		Path:    "/api/v1/test",
-		Headers: map[string]string{},
+	w := checkRequest(t, svc, authv1http.CheckRequest{
+		Method:     "GET",
+		Path:       "/api/v1/test",
+		Headers:    map[string]string{},
+		RemoteAddr: "127.0.0.1:1234",
 	})
 	resp := decodeCheckResponse(t, w)
 	if resp.Allowed {
@@ -69,12 +67,13 @@ func TestCheck_MissingAuthHeader(t *testing.T) {
 
 func TestCheck_InvalidScheme(t *testing.T) {
 	svc := testService()
-	w := checkRequest(t, svc, CheckRequest{
+	w := checkRequest(t, svc, authv1http.CheckRequest{
 		Method: "GET",
 		Path:   "/api/v1/test",
 		Headers: map[string]string{
 			"Authorization": "Basic dXNlcjpwYXNz",
 		},
+		RemoteAddr: "127.0.0.1:1234",
 	})
 	resp := decodeCheckResponse(t, w)
 	if resp.Allowed {
@@ -87,12 +86,13 @@ func TestCheck_InvalidScheme(t *testing.T) {
 
 func TestCheck_InvalidToken(t *testing.T) {
 	svc := testService()
-	w := checkRequest(t, svc, CheckRequest{
+	w := checkRequest(t, svc, authv1http.CheckRequest{
 		Method: "GET",
 		Path:   "/api/v1/test",
 		Headers: map[string]string{
 			"Authorization": "Bearer garbage-token",
 		},
+		RemoteAddr: "127.0.0.1:1234",
 	})
 	resp := decodeCheckResponse(t, w)
 	if resp.Allowed {
@@ -110,12 +110,13 @@ func TestCheck_ExpiredToken(t *testing.T) {
 		"exp":       time.Now().Add(-1 * time.Hour).Unix(),
 		"iat":       time.Now().Add(-2 * time.Hour).Unix(),
 	})
-	w := checkRequest(t, svc, CheckRequest{
+	w := checkRequest(t, svc, authv1http.CheckRequest{
 		Method: "GET",
 		Path:   "/api/v1/test",
 		Headers: map[string]string{
 			"Authorization": "Bearer " + token,
 		},
+		RemoteAddr: "127.0.0.1:1234",
 	})
 	resp := decodeCheckResponse(t, w)
 	if resp.Allowed {
@@ -132,12 +133,13 @@ func TestCheck_MissingTenantID(t *testing.T) {
 		"exp": time.Now().Add(1 * time.Hour).Unix(),
 		"iat": time.Now().Unix(),
 	})
-	w := checkRequest(t, svc, CheckRequest{
+	w := checkRequest(t, svc, authv1http.CheckRequest{
 		Method: "GET",
 		Path:   "/api/v1/test",
 		Headers: map[string]string{
 			"Authorization": "Bearer " + token,
 		},
+		RemoteAddr: "127.0.0.1:1234",
 	})
 	resp := decodeCheckResponse(t, w)
 	if resp.Allowed {
@@ -155,12 +157,13 @@ func TestCheck_ValidToken(t *testing.T) {
 		"exp":       time.Now().Add(1 * time.Hour).Unix(),
 		"iat":       time.Now().Unix(),
 	})
-	w := checkRequest(t, svc, CheckRequest{
+	w := checkRequest(t, svc, authv1http.CheckRequest{
 		Method: "GET",
 		Path:   "/api/v1/test",
 		Headers: map[string]string{
 			"Authorization": "Bearer " + token,
 		},
+		RemoteAddr: "127.0.0.1:1234",
 	})
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", w.Code)
@@ -169,8 +172,8 @@ func TestCheck_ValidToken(t *testing.T) {
 	if !resp.Allowed {
 		t.Error("expected allowed")
 	}
-	if resp.RequestHeaders["X-Tenant-Id"] != "tenant-42" {
-		t.Errorf("expected X-Tenant-Id=tenant-42, got %q", resp.RequestHeaders["X-Tenant-Id"])
+	if resp.RequestHeaders == nil || (*resp.RequestHeaders)["X-Tenant-Id"] != "tenant-42" {
+		t.Errorf("expected X-Tenant-Id=tenant-42, got %v", resp.RequestHeaders)
 	}
 }
 
@@ -181,12 +184,13 @@ func TestCheck_LowercaseAuthHeader(t *testing.T) {
 		"exp":       time.Now().Add(1 * time.Hour).Unix(),
 		"iat":       time.Now().Unix(),
 	})
-	w := checkRequest(t, svc, CheckRequest{
+	w := checkRequest(t, svc, authv1http.CheckRequest{
 		Method: "GET",
 		Path:   "/api/v1/test",
 		Headers: map[string]string{
 			"authorization": "Bearer " + token,
 		},
+		RemoteAddr: "127.0.0.1:1234",
 	})
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", w.Code)
@@ -195,8 +199,8 @@ func TestCheck_LowercaseAuthHeader(t *testing.T) {
 	if !resp.Allowed {
 		t.Error("expected allowed")
 	}
-	if resp.RequestHeaders["X-Tenant-Id"] != "tenant-lc" {
-		t.Errorf("expected X-Tenant-Id=tenant-lc, got %q", resp.RequestHeaders["X-Tenant-Id"])
+	if resp.RequestHeaders == nil || (*resp.RequestHeaders)["X-Tenant-Id"] != "tenant-lc" {
+		t.Errorf("expected X-Tenant-Id=tenant-lc, got %v", resp.RequestHeaders)
 	}
 }
 
@@ -207,12 +211,13 @@ func TestCheck_WrongSecret(t *testing.T) {
 		"exp":       time.Now().Add(1 * time.Hour).Unix(),
 		"iat":       time.Now().Unix(),
 	})
-	w := checkRequest(t, svc, CheckRequest{
+	w := checkRequest(t, svc, authv1http.CheckRequest{
 		Method: "GET",
 		Path:   "/api/v1/test",
 		Headers: map[string]string{
 			"Authorization": "Bearer " + token,
 		},
+		RemoteAddr: "127.0.0.1:1234",
 	})
 	resp := decodeCheckResponse(t, w)
 	if resp.Allowed {
@@ -222,10 +227,6 @@ func TestCheck_WrongSecret(t *testing.T) {
 		t.Errorf("expected 401, got %d", resp.StatusCode)
 	}
 }
-
-// --------------------------------------------------------------------------
-// POST /token tests
-// --------------------------------------------------------------------------
 
 func TestCreateToken_Success(t *testing.T) {
 	svc := testService()
@@ -279,14 +280,9 @@ func TestCreateToken_InvalidJSON(t *testing.T) {
 	}
 }
 
-// --------------------------------------------------------------------------
-// E2E: create token → validate with /check
-// --------------------------------------------------------------------------
-
 func TestE2E_CreateTokenThenCheck(t *testing.T) {
 	svc := testService()
 
-	// Step 1: Create a token.
 	tokenBody, _ := json.Marshal(createTokenRequest{TenantID: "e2e-tenant"})
 	tokenReq := httptest.NewRequest("POST", "/token", bytes.NewReader(tokenBody))
 	tokenReq.Header.Set("Content-Type", "application/json")
@@ -302,8 +298,7 @@ func TestE2E_CreateTokenThenCheck(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Step 2: Use the token in a /check call.
-	w := checkRequest(t, svc, CheckRequest{
+	w := checkRequest(t, svc, authv1http.CheckRequest{
 		Method: "POST",
 		Path:   "/api/v1/data",
 		Headers: map[string]string{
@@ -321,7 +316,7 @@ func TestE2E_CreateTokenThenCheck(t *testing.T) {
 	if !resp.Allowed {
 		t.Error("expected allowed")
 	}
-	if resp.RequestHeaders["X-Tenant-Id"] != "e2e-tenant" {
-		t.Errorf("expected X-Tenant-Id=e2e-tenant, got %q", resp.RequestHeaders["X-Tenant-Id"])
+	if resp.RequestHeaders == nil || (*resp.RequestHeaders)["X-Tenant-Id"] != "e2e-tenant" {
+		t.Errorf("expected X-Tenant-Id=e2e-tenant, got %v", resp.RequestHeaders)
 	}
 }

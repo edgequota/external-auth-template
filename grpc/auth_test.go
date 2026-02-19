@@ -10,7 +10,8 @@ import (
 	"testing"
 	"time"
 
-	authv1 "github.com/edgequota/external-auth-template/grpc/gen/edgequota/auth/v1"
+	"github.com/edgequota/edgequota-go/auth"
+	authv1 "github.com/edgequota/edgequota-go/gen/grpc/edgequota/auth/v1"
 	"github.com/golang-jwt/jwt/v5"
 )
 
@@ -29,10 +30,6 @@ func signToken(t *testing.T, secret string, claims jwt.MapClaims) string {
 	}
 	return s
 }
-
-// --------------------------------------------------------------------------
-// gRPC Check tests
-// --------------------------------------------------------------------------
 
 func TestCheck_MissingAuthHeader(t *testing.T) {
 	svc := testService()
@@ -216,10 +213,6 @@ func TestCheck_WrongSecret(t *testing.T) {
 	}
 }
 
-// --------------------------------------------------------------------------
-// HTTP /token tests
-// --------------------------------------------------------------------------
-
 func TestCreateToken_Success(t *testing.T) {
 	svc := testService()
 	body, _ := json.Marshal(createTokenRequest{TenantID: "tenant-1"})
@@ -244,8 +237,8 @@ func TestCreateToken_Success(t *testing.T) {
 		t.Errorf("expected expires_in=3600, got %d", resp.ExpiresIn)
 	}
 
-	// Verify the token is valid and contains the tenant_id.
-	claims, err := svc.validateToken(resp.Token)
+	v := auth.NewJWTValidator(testSecret)
+	claims, err := v.ValidateToken(resp.Token)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -281,14 +274,9 @@ func TestCreateToken_InvalidJSON(t *testing.T) {
 	}
 }
 
-// --------------------------------------------------------------------------
-// E2E: create token → validate with Check
-// --------------------------------------------------------------------------
-
 func TestE2E_CreateTokenThenCheck(t *testing.T) {
 	svc := testService()
 
-	// Step 1: Create a token.
 	body, _ := json.Marshal(createTokenRequest{TenantID: "e2e-tenant"})
 	tokenReq := httptest.NewRequest("POST", "/token", bytes.NewReader(body))
 	tokenReq.Header.Set("Content-Type", "application/json")
@@ -304,7 +292,6 @@ func TestE2E_CreateTokenThenCheck(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Step 2: Use the token in a gRPC Check call.
 	checkResp, err := svc.Check(context.Background(), &authv1.CheckRequest{
 		Method: "POST",
 		Path:   "/api/v1/data",

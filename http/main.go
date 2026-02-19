@@ -13,6 +13,7 @@ package main
 import (
 	"context"
 	"flag"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -25,6 +26,10 @@ func main() {
 	addr := flag.String("addr", envOrDefault("ADDR", ":8080"), "HTTP listen address")
 	jwtSecret := flag.String("jwt-secret", envOrDefault("JWT_SECRET", "edgequota-demo-secret"), "HMAC secret for signing JWTs")
 	flag.Parse()
+
+	if *jwtSecret == "edgequota-demo-secret" {
+		fmt.Fprintln(os.Stderr, "WARNING: using default JWT secret — set JWT_SECRET or --jwt-secret for production")
+	}
 
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
 

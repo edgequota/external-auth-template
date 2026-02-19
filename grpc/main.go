@@ -13,6 +13,7 @@ package main
 import (
 	"context"
 	"flag"
+	"fmt"
 	"log/slog"
 	"net"
 	"net/http"
@@ -21,7 +22,7 @@ import (
 	"syscall"
 	"time"
 
-	authv1 "github.com/edgequota/external-auth-template/grpc/gen/edgequota/auth/v1"
+	authv1 "github.com/edgequota/edgequota-go/gen/grpc/edgequota/auth/v1"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
 )
@@ -32,11 +33,14 @@ func main() {
 	jwtSecret := flag.String("jwt-secret", envOrDefault("JWT_SECRET", "edgequota-demo-secret"), "HMAC secret for signing JWTs")
 	flag.Parse()
 
+	if *jwtSecret == "edgequota-demo-secret" {
+		fmt.Fprintln(os.Stderr, "WARNING: using default JWT secret — set JWT_SECRET or --jwt-secret for production")
+	}
+
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
 
 	svc := NewAuthService(*jwtSecret, logger)
 
-	// --- gRPC server ---
 	grpcServer := grpc.NewServer()
 	authv1.RegisterAuthServiceServer(grpcServer, svc)
 	reflection.Register(grpcServer)
@@ -54,7 +58,6 @@ func main() {
 		}
 	}()
 
-	// --- HTTP server (token endpoint) ---
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /token", svc.HandleCreateToken)
 
@@ -73,7 +76,6 @@ func main() {
 		}
 	}()
 
-	// --- Graceful shutdown ---
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 	<-ctx.Done()
