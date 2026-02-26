@@ -3,7 +3,7 @@ module github.com/edgequota/external-auth-template/grpc
 go 1.25.4
 
 require (
-	github.com/edgequota/edgequota-go v0.3.0
+	github.com/edgequota/edgequota-go v0.4.0
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	google.golang.org/grpc v1.79.1
 )
